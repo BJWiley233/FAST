@@ -57,9 +57,11 @@ def _minimize_energy(minimize_info):
     # setup directory
     cmd0 = 'mkdir ' + output_folder
     # source gromacs file if applicable. Must add to line before
-    # gromacs command
+    # gromacs command.  Brian W: Adding source Intel library/compiler vars (2022-08-14)
+    # There are probably other places to source oneAPI: TODO check this
     if minimize_obj.source_file is not None:
         cmd1 = 'source ' + minimize_obj.source_file + '\n'
+        cmd1 += 'source /opt/intel/oneapi/setvars.sh\n'
     else:
         cmd1 = ''
     # editconf command

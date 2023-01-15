@@ -17,8 +17,6 @@ from enspara.util import array as ra
 from .. import tools
 from ..base import base
 from ..exception import UnexpectedResult
-import re
-import sys
 
 #######################################################################
 # code
@@ -35,22 +33,11 @@ def _make_bsub_lines(kwargs):
             for i in np.transpose([keys, values])])
     return additions
 
-# UGH this is wrapped into sim_obj = Gromax(submission_obj=gro_submission)
+
 def _gen_header(
-        queue, n_tasks, max_time, job_name, pythonpath, kwargs, blade=None):
+        queue, n_tasks, max_time, job_name, kwargs):
     """Generates an sbatch header file"""
-    # NUMEXPR_MAX_THREADS
-    NUMEXPR_MAX_THREADS = n_tasks * 4 if n_tasks * 4 < 64 else 64
     header = '#!/bin/bash\n\n'
-    header += '# set python path\n' + \
-        'export PYTHONPATH=%s\n\n' % pythonpath
-    header += '# set NUMEXPR_MAX_THREADS\n' + \
-        'export NUMEXPR_MAX_THREADS=%d\n\n' % NUMEXPR_MAX_THREADS
-    header += '# set LSF_DOCKER variables for Intel oneAPI and MPI (MPI allows multiple threads across nodes)\n' 
-    header += 'export LSF_DOCKER_NETWORK=host\n' 
-    header += 'export LSF_DOCKER_IPC=host\n' 
-    header += 'export LSF_DOCKER_SHM_SIZE=20G\n' 
-    header += 'export LSF_DOCKER_VOLUMES="/scratch1/fs1/ris/application/intel/oneapi-2021.4.0:/opt/intel/oneapi $LSF_DOCKER_VOLUMES"\n\n'
     header += '# specify resources\n' + \
         '#BSUB -n %d\n' % n_tasks
     header += '\n# max wallclock time\n' + \
@@ -61,8 +48,8 @@ def _gen_header(
         '#BSUB -J %s\n' % job_name
     header += '#BSUB -o lsf_output-%J.log\n'
     header += '#BSUB -e lsf_output-%J.log\n'
-    if blade:
-        header += '#BSUB -m compute1-exec=20%d\n' % blade
+    header += '#BSUB -G compute-jheld\n'
+    header += '#BSUB -a "docker(heldlab/gf)"\n'
     additions = _make_bsub_lines(kwargs)
     header += '\n# additional specs\n'
     header += additions + '\n'
@@ -167,7 +154,7 @@ class LSFSub(base):
         The name of the submission job.
     """
     def __init__(
-            self, queue, n_tasks=1, max_time=1500, job_name=None, pythonpath='""', **kwargs):
+            self, queue, n_tasks=1, max_time=1500, job_name=None, **kwargs):
         self.queue = str(queue)
         self.n_tasks = n_tasks
         self.max_time = max_time
@@ -175,8 +162,6 @@ class LSFSub(base):
             self.job_name = 'LSF_Sub'
         else:
             self.job_name = str(job_name)
-        # this sucks because LSF sucks
-        self.pythonpath=pythonpath
         self.kwargs = kwargs
 
     @property
@@ -196,7 +181,7 @@ class LSFSub(base):
     def run(self, cmds, output_dir=None, output_name=None):
         # generate header file
         header = _gen_header(
-            self.queue, self.n_tasks, self.max_time, self.job_name, self.pythonpath,
+            self.queue, self.n_tasks, self.max_time, self.job_name,
             self.kwargs)
         # add commands
         if type(cmds) is str:
@@ -211,41 +196,13 @@ class LSFSub(base):
             output_dir = os.path.abspath("./")
         if output_name is None:
             output_name = 'lsf_submission'
-        print("output_dir", output_dir)
-        
         os.chdir(output_dir)
-        
         # write submission file
         f = open(output_name, 'w')
         f.write(sub_file)
         f.close()
-
-        # # get name of directory gen0, gen1 ... genN;  SUPER {F-word}ing Bandaid!!!!!!!!
-        # head, tail = os.path.split(output_dir)
-        # # extract kid #
-        # dig_arr = re.findall(r'\d+', tail)
-        # if len(dig_arr) >= 1:
-        #     print("############### BHOSTS!!!!!!!!!!!!!!!!!!!!")
-        #     # bhosts -gpu for TeslaV100_SXM2_ ranges from blades in a row {195..217}
-        #     # can only these for general queue (anything more than 14 kids will double up)
-        #     # allowed_gpu_hosts = [195,196,200,201,202,203,204,205,206,207,208,209,214,216]
-        #     allowed_gpu_hosts = [200,201,202,203,204,205,206,207,208,209,214,216]
-        #     blade_idx=int(dig_arr[0])
-        #     #blade_suffix=195+int(dig_arr[0])
-        #     #sys.exit("You can not have three process at the same time.")
-        #     # if blade_idx in range(0,14):
-        #     if blade_idx in range(0,12):
-        #         print("############### Appending BHOSTS!!!!!!!!!!!!!!!!!!!!")
-        #         host="compute1-exec-%d" % allowed_gpu_hosts[blade_idx]
-        #         f = open(output_name, 'a')
-        #         f.write("\n\n#BSUB -m %s" % host)
-        #         f.close()
-        
-        # # get name of 
         # run submission file
-        #print("os.getcwd()", os.getcwd())
-        #print("###### output_name")
-        job_sub = tools.run_commands('bsub < ' + output_name)[0]
+        job_sub = tools.run_commands('LSF_DOCKER_VOLUMES="$HOME:$HOME /storage1/fs1/jheld/Active:/storage1/fs1/jheld/Active" bsub < ' + output_name)[0]
         job_id = job_sub.split()[1].split("<")[-1].split(">")[0]
         os.chdir(home_dir)
         return job_id

@@ -56,15 +56,14 @@ class GromaxProcessing(base):
         if self.align_group is None:
             trjconv_cmd = ""
         else:
-            # We won't always use MPI if it isn't faster but for now hard code as gmx_mpi for image kboltonlab/mpi:2.0 and kboltonlab/mpi_gpu:1.0
             trjconv_alignment = \
-                "echo '" + self.align_group + " 0' | gmx_mpi trjconv " + \
+                "echo '" + self.align_group + " 0' | gmx trjconv " + \
                 "-f frame0.xtc -o frame0_aligned.xtc -s md.tpr -center " + \
                 "-pbc "+self.pbc+" -ur "+self.ur
             trjconv_output_groups = \
                 "echo '" + self.align_group + " " + self.output_group + \
-                "' | gmx_mpi trjconv -f frame0.xtc -o frame0_masses.xtc" + \
-                " -s md.tpr -center -pbc "+self.pbc+" -ur "+self.ur + '\nsleep 30'
+                "' | gmx trjconv -f frame0.xtc -o frame0_masses.xtc" + \
+                " -s md.tpr -center -pbc "+self.pbc+" -ur "+self.ur
             if self.index_file is not None:
                 trjconv_alignment += " -n " + self.index_file
                 trjconv_output_groups += " -n " + self.index_file
@@ -213,32 +212,20 @@ class Gromax(base):
         if self.source_file is None:
             source_cmd = ''
         else:
-            source_cmd = 'source ' + self.source_file + '\n'
-            source_cmd += 'echo CUDA_VISIBLE_DEVICES: $CUDA_VISIBLE_DEVICES\n'
-            source_cmd += 'source /opt/intel/oneapi/setvars.sh\n\n'
+            source_cmd = 'source ' + self.source_file + '\n\n'
         # generate grompp command
-        # We won't always use MPI if it isn't faster but for now hard code as gmx_mpi for image kboltonlab/mpi:2.0 and kboltonlab/mpi_gpu:1.0
-        grompp_cmd = 'gmx_mpi grompp -f ' + self.mdp_file + ' -c ' + \
+        grompp_cmd = 'gmx grompp -f ' + self.mdp_file + ' -c ' + \
             self.start_name + ' -p ' + self.top_file + ' -o ' + \
-            base_output_name + ' -maxwarn ' + self.max_warn + \
-            ' -r ' + self.start_name # we should use positional restraints posre.itp created by default from pdb2gmx
+            base_output_name + ' -maxwarn ' + self.max_warn
         # optionally add an index file
         if self.index_file is not None:
             grompp_cmd +=  ' -n ' + self.index_file
         grompp_cmd += '\n'
         # generate mdrun command
         # JRP added '-cpi state -g md' on 07-01-2019
-        # mdrun_cmd = 'gmx mdrun -cpi state -g md -s ' + base_output_name + ' -o ' + \
-        #     base_output_name + ' -c after_' + base_output_name + ' -v -nt ' + \
-        #     str(self.n_cpus)
-        # let GROMACs do the optimization of CPUs
-        # We won't always use MPI if it isn't faster but for now hard code as gmx_mpi for image kboltonlab/mpi:2.0 and kboltonlab/mpi_gpu:1.0
-        ## mpirun -np 8 gmx_mpi mdrun -npme 2 -cpi state -g md -s md -o md -c after_md -v -x frame0 -pin on -nb gpu
-        # mdrun_cmd = 'mpirun -np %d ' % (int(self.n_cpus/8),)
-        # mdrun_cmd = 'mpirun -np %d ' % 8
-        # mdrun_cmd = 'mpirun -np %d ' % (int(self.n_cpus),)
-        mdrun_cmd = 'gmx_mpi mdrun -cpi state -g md -s ' + base_output_name + ' -o ' + \
-            base_output_name + ' -c after_' + base_output_name + ' -v '
+        mdrun_cmd = 'gmx mdrun -cpi state -g md -s ' + base_output_name + ' -o ' + \
+            base_output_name + ' -c after_' + base_output_name + ' -v -nt ' + \
+            str(self.n_cpus)
         # if an MD run, make default name for trajectory
         if not self.min_run:
             mdrun_cmd += ' -x frame0'
@@ -246,13 +233,8 @@ class Gromax(base):
         if self.n_gpus is not None:
             if self.n_cpus%self.n_gpus != 0:
                 raise
-            # mdrun_cmd += ' -nb gpu -update gpu'
-            mdrun_cmd += ' -nb gpu'
-            # mdrun_cmd += ' -ntmpi ' + str(self.n_gpus) + ' -ntomp ' + \
-            #     str(int(self.n_cpus/self.n_gpus))
-            #let GROMACs do the optimization of GPUs/MPI
-            mdrun_cmd += ''
-            
+            mdrun_cmd += ' -ntmpi ' + str(self.n_gpus) + ' -ntomp ' + \
+                str(int(self.n_cpus/self.n_gpus))
         # adds additional keywords that are not specified
         keys = list(self.kwargs.keys())
         values = list(self.kwargs.values())

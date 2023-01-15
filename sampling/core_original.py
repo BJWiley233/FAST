@@ -31,8 +31,6 @@ from ..submissions import lsf_subs
 from enspara.msm import builders, MSM
 from enspara.util import array as ra
 from functools import partial
-import time
-import sys
 
 
 logger = logging.getLogger(__name__)
@@ -176,15 +174,12 @@ def _move_trjs(gen_dir, msm_dir, gen_num, n_kids):
     for kid in range(n_kids):
         # trj to move trajectories
         try:
-            # specify directory and file names
+            # specify directroy and file names
             kid_dir = gen_dir + "/kid" + str(kid)
             output_full = msm_dir + '/trajectories_full' + '/trj_gen' + \
                 ('%03d' % gen_num) + '_kid' + ('%03d' % kid) + '.xtc'
-            print("output_full:",output_full)
             output_masses = msm_dir + '/trajectories' + '/trj_gen' + \
                 ('%03d' % gen_num) + '_kid' + ('%03d' % kid) + '.xtc'
-            print("output_masses:",output_masses)
-            print("kid_dir:",kid_dir)
             cmds = []
             if os.path.exists(output_full):
                 logging.info("file '%s' exists! skipping move." % output_full)
@@ -197,9 +192,7 @@ def _move_trjs(gen_dir, msm_dir, gen_num, n_kids):
                 cmds.append(
                     'mv ' + kid_dir + '/frame0_masses.xtc ' +output_masses)
             if len(cmds) > 0:
-                print("len(cmds)", len(cmds))
                 out = tools.run_commands(cmds)
-                print()
         # give sad-face expression
         except:
             raise MissingData(
@@ -250,12 +243,10 @@ def _pickle_submit(
     cmds = [cmd0, cmd1]
     base_submission = base_name + '_submission'
     # submit and wait for job to finish
-    print("cmds,base_submission:",cmds,base_submission)
     pid = sub_obj.run(cmds, output_name=base_submission)
     q_check_obj.wait_for_pids([pid], wait_for_all=True)
     # clean up submission
     sub_script_name = q_check_obj.get_submission_names(pid)[0]
-    print("sub_script_name", sub_script_name)
     sub_output = 'submissions/' + base_name + '_gen' + \
         ('%03d' % gen_num) + '.out'
     base_pickle_output = 'submissions/' + base_name + '_gen' + \
@@ -264,11 +255,7 @@ def _pickle_submit(
         ('%03d' % gen_num) + '.py'
     base_sub_output = 'submissions/' + base_submission + '_gen' + \
         ('%03d' % gen_num)
-    if os.path.exists(sub_script_name):
-        cmd1 = 'mv ' + sub_script_name + ' ' + sub_output + ' --backup=numbered'
-    else:
-        time.sleep(25)
-        cmd1 = 'mv ' + sub_script_name + ' ' + sub_output + ' --backup=numbered'
+    cmd1 = 'mv ' + sub_script_name + ' ' + sub_output + ' --backup=numbered'
     cmd2 = 'mv ' + base_pickle + ' ' + base_pickle_output + \
         ' --backup=numbered'
     cmd3 = 'mv ' + base_name + ".py" + ' ' + base_python_output + \
@@ -286,7 +273,6 @@ def _determine_gen(output_dir, ignore_error=False):
     """Determines the current generation number."""
     # determine number of gen folders
     n_gen_folders = len(glob.glob(output_dir+'/gen*'))
-    # n_gen_folders=3 # for stopping and playing :)
     # gets completed sims in msm dir
     trj_names = glob.glob(output_dir + '/msm/trajectories/*.xtc')
     # sorts by unique gen number
@@ -295,7 +281,6 @@ def _determine_gen(output_dir, ignore_error=False):
     # error check that completed sims match number of gen folders
     n_trj_gens = len(np.unique(trj_gen_nums))
     if (n_gen_folders != n_trj_gens) and not ignore_error:
-        print("n_gen_folders, n_trj_gens", n_gen_folders, n_trj_gens)
         raise DataInvalid(
             'The number of generations are not consistent with the number ' + \
             'of trajectories. Maybe a simulation crashed?')
@@ -337,7 +322,6 @@ def _move_cluster_data(msm_dir, rebuild_num, analysis_obj=None):
     """
     # define old directory to move into. mkdir if first rebuild.
     old_dir = msm_dir + '/old'
-    print("REBUILD_NUM", rebuild_num)
     if rebuild_num == 0:
         try:
             cmd = 'mkdir ' + old_dir
@@ -357,24 +341,14 @@ def _move_cluster_data(msm_dir, rebuild_num, analysis_obj=None):
     cmd5 = 'mkdir ' + msm_dir + '/centers_masses'
     cmd6 = 'mkdir ' + msm_dir + '/centers_restarts'
     cmds = [cmd1, cmd2, cmd3, cmd4, cmd5, cmd6]
-    # if applicable, move analysis folder 
-    # this will only have attribute `output_folder` if base class set_output is ran so run it :)
-    if analysis_obj:
-        analysis_obj.set_output(msm_dir, rebuild_num)
-    print("***************  PLEASE do this!!!")
-    ## this only has this attribute if analysis_obj.set_output(msm_dir, gen_num) is ran
+    # if applicable, move analysis folder
     if hasattr(analysis_obj, "output_folder"):
-        print("***************  DOING this!!!")
         base_folder = analysis_obj.output_folder.split("/")[-1]
-        if os.path.exists(analysis_obj.output_folder):
-            cmd = 'mv ' + analysis_obj.output_folder + ' ' + old_dir + \
-                "/" + base_folder + str(rebuild_num)
-            print(cmd)
-            cmds.append(cmd)
+        cmd = 'mv ' + analysis_obj.output_folder + ' ' + old_dir + \
+            "/" + base_folder + str(rebuild_num)
+        cmds.append(cmd)
     # run move commands
-    print("MOVING...")
     _ = tools.run_commands(cmds)
-    print("MOVE FINISHED!")
     return
 
 
@@ -399,37 +373,28 @@ def _perform_analysis(
         Flag for rebuilding whole analysis or analyzing a subset of
         structures.
     """
-    print("analysis_obj.pocket_reporter.atom_indices", analysis_obj.pocket_reporter.atom_indices)
     t0 = time.time()
     # determine if there is an analysis object
     if analysis_obj is None:
         state_rankings = None
     else:
         # set the objects output
-        print("SETTING ANALYSIS OBJECT OUTPUTS")
         analysis_obj.set_output(msm_dir, gen_num)
         # optionally set rebuild or continue analysis
-        print("hasattr(analysis_obj, 'build_full')", hasattr(analysis_obj, 'build_full'))
         if hasattr(analysis_obj, 'build_full'):
-            print("update_data", update_data)
             analysis_obj.build_full = update_data
         # if the output doesn't exists, pickle submit analysis
-        print("analysis_obj.output_name", analysis_obj.output_name)
         if not os.path.exists(analysis_obj.output_name):
-            ## if the current generation output_name doesn't exists and folder is analysis folder hasn't been moved, then move it to old
             _pickle_submit(
                 msm_dir, analysis_obj, sub_obj,
                 q_check_obj, gen_num, 'analysis')
         # get rankings
-        # wait for file to load FileNotFoundError: [Errno 2] No such file or directory: '/storage1/fs1/jheld/Active/Jason/MDS/FASTPockets_Brian_background81/msm/rankings/pockets_per_state11.npy'
-        #print("SLEEPING 20s")
-        #time.sleep(20)
         state_rankings = analysis_obj.state_rankings
         # check that everything went well
         # number of state rankings should be equal to number of state
         # in the assignments
         n_states_ranked = len(state_rankings)
-        n_states = len(np.unique(ra.load(msm_dir + '/data/assignments.h5').flatten()))
+        n_states = len(np.unique(ra.load(msm_dir + '/data/assignments.h5')))
         if n_states_ranked != n_states:
             raise DataInvalid(
                 'The number of state rankings does not match the number ' + \
@@ -444,23 +409,6 @@ def push_forward(s, num=0):
     s_pushed = "\n".join(
         ["".join(itertools.repeat(" ", num)) + l for l in s_out])
     return s_pushed
-
-
-def _analyze_sasa(msm_dir, n_kids=10, sasa_increase_threshold=0.5, residues='All'):
-    '''
-    Looks @ increase in SASA between generations
-
-    Parameters
-    ----------
-    initial_state : str or MDTraj object,
-        The starting structure for adaptive sampling.
-    '''
-    no_increment_in_sasa = False
-    if os.path.exists(msm_dir+"/data/partitioned_centers_info.npy"):
-        msm_state_data = np.load()
-    else:
-        return no_increment_in_sasa
-    return no_increment_in_sasa
 
 
 class AdaptiveSampling(base):
@@ -515,9 +463,6 @@ class AdaptiveSampling(base):
         still running.
     output_dir : str, default='adaptive_sampling',
         The output directory name for adaptive sampling run.
-    analyze_sasa : bool, default='False',
-        Whether to analyze SASA and kill if threshold does not increase
-        past certain point.
     """
 
     def __init__(
@@ -526,8 +471,7 @@ class AdaptiveSampling(base):
             analysis_obj=None, ranking_obj=None, spreading_func=None,
             update_freq=np.inf, continue_prev=False, sub_obj=None,
             q_check_obj=None, q_check_obj_sim=None,
-            output_dir='adaptive_sampling', verbose=True, analyze_sasa=False,
-            sasa_threshold=0.5):
+            output_dir='adaptive_sampling', verbose=True):
         # Initialize class variables
         self.sim_obj = sim_obj
         self.initial_state = initial_state
@@ -575,8 +519,6 @@ class AdaptiveSampling(base):
         self.output_dir = os.path.abspath(output_dir)
         self.msm_dir = self.output_dir + '/msm'
         self.verbose = verbose
-        self.analyze_sasa = analyze_sasa
-        self.sasa_threshold = sasa_threshold
 
     @property
     def class_name(self):
@@ -600,7 +542,6 @@ class AdaptiveSampling(base):
             'q_check_obj_sim': self.q_check_obj_sim,
             'output_dir': self.output_dir,
             'verbose': self.verbose,
-            'sasa_threshold': self.sasa_threshold
         }
 
     def print_parameters(self):
@@ -696,10 +637,9 @@ class AdaptiveSampling(base):
                 self.n_kids, self.q_check_obj_sim)
             # move trajectories after sampling
             logging.info('moving trajectories')
-            print("gen_dir, self.msm_dir, gen_num, self.n_kids:",gen_dir, self.msm_dir, gen_num, self.n_kids)
             _move_trjs(gen_dir, self.msm_dir, gen_num, self.n_kids)
             # wait for nfs to catch up
-            time.sleep(12)
+            time.sleep(65)
 
             ###########################################################
             #                  STEP 2 (clustering)                    #
@@ -758,25 +698,20 @@ class AdaptiveSampling(base):
             # determine where adaptive sampling left off (looks at
             # trajectories and folder numbers). Allows for a discrepancy.
             gen_num = _determine_gen(self.output_dir, ignore_error=True)
-            # gen_num = 2 # for stopping and playing :)
             gen_dir = self.output_dir + '/gen' + str(gen_num)
             logging.info('continuing adaptive sampling from run %d' % gen_num)
             # try to move trajectories from current gen and initiate clustering
             try:
                 # move trajectories
                 logging.info('moving trajectories')
-                
                 _move_trjs(gen_dir, self.msm_dir, gen_num, self.n_kids)
                 # wait for nfs to catch up
-                #time.sleep(65)
-                time.sleep(60)
-
+                time.sleep(65)
             except:
                 pass
             # error check for consistent number of trajectories and
             # gen folders
             gen_num_test = _determine_gen(self.output_dir)
-            # gen_num_test = 2  # for stopping and playing :)
             assert gen_num == gen_num_test
 
             ###########################################################
@@ -784,12 +719,10 @@ class AdaptiveSampling(base):
             ###########################################################
 
             # determine if clustering was completed
-            print("***************", self.msm_dir+"/data/assignments.h5")
             if os.path.exists(self.msm_dir+"/data/assignments.h5"):
                 # check if clustering was successful
                 correct_clust =  self.cluster_obj.check_clustering(
                     self.msm_dir, gen_num, self.n_kids)
-                print("correct_clust", correct_clust)
             else:
                 correct_clust = False
             # if not, recluster
@@ -813,8 +746,6 @@ class AdaptiveSampling(base):
                 # built in rebuild everything if restarting sims
                 self.cluster_obj.build_full = True
                 self.cluster_obj.set_filenames(self.msm_dir)
-                print("self.msm_dir, self.cluster_obj, self.sub_obj,self.q_check_obj, gen_num",self.msm_dir, self.cluster_obj, self.sub_obj,
-                    self.q_check_obj, gen_num)
                 _pickle_submit(
                     self.msm_dir, self.cluster_obj, self.sub_obj,
                     self.q_check_obj, gen_num, 'clusterer')
@@ -829,24 +760,18 @@ class AdaptiveSampling(base):
             ###########################################################
             #                 STEP 3 (saving states)                  #
             ###########################################################
-            print("self.save_state_obj", self.save_state_obj)
+
             if self.save_state_obj is not None:
                 correct_save = self.save_state_obj.check_save_states(
                     self.msm_dir)
                 if not correct_save: 
                     logging.info('saving states')
                     t_pre = time.time()
-                    print("self.msm_dir",self.msm_dir)
-                    print("self.save_state_obj",self.save_state_obj)
-                    print("self.sub_obj,",self.sub_obj)
-                    print("self.q_check_obj",self.q_check_obj)
-                    print("gen_num", gen_num)
                     _pickle_submit(
                         self.msm_dir, self.save_state_obj, self.sub_obj,
                         self.q_check_obj, gen_num, 'save_states')
                     correct_save = self.save_state_obj.check_save_states(
                         self.msm_dir)
-                    print("correct_save, self.msm_dir",correct_save,self.msm_dir)
                     if not correct_save:
                         raise MissingData('Saving states failed!')
                     t_post = time.time()
@@ -854,7 +779,6 @@ class AdaptiveSampling(base):
                         'saving states took %0.4f seconds' % (t_post - t_pre))
 
         # determine if updating data
-        print("gen_num, self.update_freq", gen_num, self.update_freq)
         if int(gen_num % self.update_freq) == 0:
             update_data = True
         else:
@@ -866,29 +790,6 @@ class AdaptiveSampling(base):
 
         # run analysis object routine
         logging.info('analyzing cluster data')
-        print("self.analysis_obj", self.analysis_obj, self.analysis_obj.build_full)
-        # move old analysis folder
-        #  _move_cluster_data(
-        #                 self.msm_dir, rebuild_num, self.analysis_obj)
-        rebuild_num = int(gen_num / self.update_freq) - 1
-        print("_move_analysis_data", self.msm_dir, gen_num, rebuild_num, self.analysis_obj.analysis_folder)
-        self.analysis_obj.set_output(self.msm_dir, rebuild_num)
-        if hasattr(self.analysis_obj, "output_folder"):
-            print("***************  DOING this!!!")
-            old_dir = self.msm_dir + '/old'
-            base_folder = self.analysis_obj.output_folder.split("/")[-1]
-            cmd = 'mv ' + self.analysis_obj.output_folder + ' ' + old_dir + \
-            "/" + base_folder + str(rebuild_num)
-            cmds = [cmd]
-            print(cmds)
-            ## if it hasn't been moved yet move it
-            if os.path.exists(self.analysis_obj.output_folder) and not os.path.exists(old_dir + "/" + base_folder + str(rebuild_num)):
-            # run move commands
-                print("MOVING %s directory" % self.analysis_obj.output_folder)
-                _ = tools.run_commands(cmds)
-                print("MOVE completed!")
-        print("SLEEPING... " )
-        time.sleep(10)
         state_rankings = _perform_analysis(
             self.analysis_obj, self.msm_dir, gen_num, self.sub_obj,
             self.q_check_obj, update_data)
@@ -924,86 +825,6 @@ class AdaptiveSampling(base):
         np.save(
             self.msm_dir + '/rankings/states_to_simulate_gen' + \
                 str(gen_num) + '.npy', new_states)
-        print("self.analyze_sasa", self.analyze_sasa)
-        if gen_num >= 1:
-            if hasattr(self.analysis_obj, "output_folder"):
-                ###########################################################
-                #                   STEP 7 (do change in SASA)            #
-                ###########################################################
-                if self.analyze_sasa:
-                    states_current = np.load(self.msm_dir + '/rankings/states_to_simulate_gen' + str(gen_num) + '.npy')
-                    states_previous = np.load(self.msm_dir + '/rankings/states_to_simulate_gen' + str(gen_num-1) + '.npy')
-                    current_pdbs_dir = msm_dir + '/centers_masses'
-                    previous_pdbs_dir = old_dir + '/centers_masses' + str(gen_num-1)
-
-                    if hasattr(self.analysis_obj, 'residues_of_interest'):
-                        residues = self.analysis_obj.residues_of_interest
-                    else:
-                        residues = 'All'
-                    
-                    if hasattr(self.analysis_obj, 'atoms_of_interest'):
-                        atoms = self.analysis_obj.atoms_of_interest
-                    else:
-                        atoms = None
-                    
-                    if hasattr(self.analysis_obj, 'mode'):
-                        mode = self.analysis_obj.mode
-                    else:
-                        mode = 'residue'
-                        atoms = None
-                    terminate, inc_sasa = _analyze_sasa(states_current, states_previous, current_pdbs_dir, previous_pdbs_dir, self.sasa_threshold, mode, residues, atoms)
-                    if terminate:
-                        sys.exit("Terminating as SASA has not increments passed %s.  Increment was %s\n" % (self.sasa_threshold, inc_sasa))
-
-        def _analyze_sasa(states_current, states_previous, current_pdbs_dir, previous_pdbs_dir, sasa_inc_thresh=0.5, mode = 'residue', residues='All', atoms=None):
-            # in case of multiple conformers use *.pdb
-            current_pdbs = [current_pdbs_dir + '/state%06d*.pdb' % i for i in states_current]
-            previous_pdbs = [previous_pdbs_dir + '/state%06d*.pdb' % i for i in states_previous]
-            current_pdbs_glob = [glob.glob(i) for i in current_pdbs]
-            previous_pdbs_glob = [glob.glob(i) for i in previous_pdbs]
-            flat_current_pdbs = [item for sublist in current_pdbs_glob for item in sublist]
-            flat_previous_pdbs = [item for sublist in previous_pdbs_glob for item in sublist]
-
-            trajs_curr = [md.load(pdb) for pdb in flat_current_pdbs]
-            trajs_prev = [md.load(pdb) for pdb in flat_previous_pdbs]
-
-            sasas_current = []
-            sasas_prev = []
-
-            all_residues = list(trajs_curr[0].topology.residues)
-            all_res_str=[str(res) for res in all_residues]
-            all_atoms = list(trajs_curr[0].topology.atoms)
-            all_atoms_str=[str(res) for res in all_atoms]
-
-            if mode == 'atom':
-                if atoms:
-                    idxs = np.where(np.in1d(all_atoms_str, atoms))[0]
-                else:
-                    idxs = range(0, len(all_atoms_str)-1)
-            else:
-                if residues != 'All':
-                    idxs = np.where(np.in1d(all_res_str, residues))[0]
-                else:
-                    idxs = range(0, len(all_res_str)-1)
-
-            for trj in trajs_curr:
-                sasa = md.shrake_rupley(trj, probe_radius=0.14, n_sphere_points=960, mode=mode, change_radii=None, get_mapping=False)
-                # subset_sasa = sasa[:,idxs]
-                sasas_current.append(sasa[:,idxs].sum())
-            for trj in trajs_prev:
-                sasa = md.shrake_rupley(trj, probe_radius=0.14, n_sphere_points=960, mode=mode, change_radii=None, get_mapping=False)
-                # subset_sasa = sasa[:,idxs]
-                sasas_prev.append(sasa[:,idxs].sum())
-
-            sasas_current.sort(reverse=True)
-            sasas_prev.sort(reverse=True)
-            terminate = False
-            inc_sasa = np.mean(sasas_current[0:3]) - np.mean(sasas_prev[0:3])
-            if inc_sasa < sasa_inc_thresh:
-                terminate = True
-            
-            return terminate, inc_sasa
-
 
         if (self.save_state_obj.save_routine == 'masses') or \
                 (self.save_state_obj.centers == 'none'):
@@ -1082,10 +903,8 @@ class AdaptiveSampling(base):
                 _pickle_submit(
                     self.msm_dir, self.save_state_obj, self.sub_obj,
                     self.q_check_obj, gen_num, 'save_states')
-                time.sleep(10)
                 correct_save = self.save_state_obj.check_save_states(
                     self.msm_dir)
-                print("correct_save, self.msm_dir",correct_save,self.msm_dir)
                 if not correct_save:
                     raise MissingData('Saving states failed!')
                 t_post = time.time()
@@ -1136,9 +955,6 @@ class AdaptiveSampling(base):
                     (self.save_state_obj.centers == 'none'):
                 self.save_restart_obj.gen_num = gen_num
                 self.save_restart_obj.run(self.msm_dir)
-
-            
-            
 
         t1 = time.time()
         logging.info("Total time took %0.4f seconds" % (t1 - t0))

@@ -15,12 +15,14 @@ import itertools
 import glob
 import mdtraj as md
 import numpy as np
+import pandas as pd
 import os
 from .base_analysis import base_analysis
 from .. import tools
 from enspara.geometry import pockets
 from functools import partial
 from multiprocessing import Pool
+from ..sampling import core
 
 
 #######################################################################
@@ -40,6 +42,7 @@ def _save_pocket_element(save_info):
     """Helper function for parallelizing the saving the pdb of pocket
     elements and a data file containing a list of pocket volumes."""
     # gather save info
+    print("_save_pocket_element for", save_info)
     pocket_element, state_name, output_folder = save_info
     # make state analysis directory and save pdb coords
     _ = tools.run_commands('mkdir ' + output_folder)
@@ -59,15 +62,20 @@ def save_pocket_elements(
         pocket_func, centers, pdb_filenames, output_folder, n_procs):
     """Function to calculate and save pocket elements / pocket info"""
     # determine the base state name and output folders tp create
+    print("Running save_pocket_elements")
     state_names = np.array(
         [filename.split("/")[-1].split("-")[0] for filename in pdb_filenames])
+    print("1")
     output_folders = np.array(
         [output_folder + "/" + state_name for state_name in state_names])
+    print("2")
     # calculate pockets
+    print(pocket_func)
     pocket_elements = pocket_func(centers)
     # generate zipped info to send to helper
     save_info = list(zip(pocket_elements, state_names, output_folders))
     # paralellize
+    print("Pooling with %s procs ..." % (n_procs))
     pool = Pool(processes=n_procs)
     pool.map(_save_pocket_element, save_info)
     pool.terminate()
@@ -129,7 +137,7 @@ class ResiduePockets:
         The number of cpus to use for determining pocket volumes.
     """
 
-    def __init__(self, atom_indices, distance_cutoff=1.0, n_cpus=1):
+    def __init__(self, atom_indices, distance_cutoff=1.0, n_cpus=1, mode='residue', residues='All', atoms=None):
         self.atom_indices = atom_indices
         if isinstance(self.atom_indices, (str)):
             try:
@@ -137,12 +145,17 @@ class ResiduePockets:
             except:
                 self.atom_indices = np.array(
                     np.load(self.atom_indices), dtype=int)
+        print("ResiduePockets atom indices:", self.atom_indices)
         self.distance_cutoff = distance_cutoff
         self.n_cpus = n_cpus
+        self.residues = residues
+        self.atoms = atoms
+        self.mode = mode
 
     def parse_pockets(self, pockets_dir):
         """Searches through output directory for pdbs and pockets and
         parses them for pocket sizes around selected residues."""
+        print("Parsing pockets under ResiduePockets parse_pockets ##############################")
         pockets_dir = os.path.abspath(pockets_dir)
         # get data file names
         pocket_files = np.sort(glob.glob(pockets_dir + "/*/state*.pdb"))
@@ -154,13 +167,18 @@ class ResiduePockets:
                 itertools.repeat(self.atom_indices),
                 itertools.repeat(self.distance_cutoff)))
         pool = Pool(processes=self.n_cpus)
-        pockets = pool.map(_determine_pocket_neighbors, file_info)
+        pockets = pool.starmap(_determine_pocket_neighbors, zip(file_info, itertools.repeat('NotNone')))
+        pockets, better_pockets = zip(*pool.starmap(_determine_pocket_neighbors, zip(file_info, itertools.repeat('NotNone'))))
         pool.terminate()
-        return np.array(pockets)
+        better_pockets_return = np.array(better_pockets)[ np.where([i[0] for i in better_pockets])[0]]
+        #
+        return np.array(pockets), better_pockets_return
 
 
-def _determine_pocket_neighbors(file_info):
+def _determine_pocket_neighbors(file_info, residue_specific=None):
     pdb_filename, pocket_filename, atom_indices, distance_cutoff = file_info
+    print("******************* Determining pockets only for atom indices:", atom_indices)
+    print("pdb_filename", pdb_filename)
     pdb = md.load(pdb_filename)
     pdb_pockets = md.load(pocket_filename)
     pdb_xyz = pdb.xyz[0, atom_indices]
@@ -169,9 +187,17 @@ def _determine_pocket_neighbors(file_info):
     for n in np.arange(pdb_xyz.shape[0]):
         diffs = np.abs(pdb_pockets_xyz - pdb_xyz[n])
         dists = np.sqrt(np.einsum('ij,ij->i', diffs, diffs))
+        print()
         close_iis.append(np.where(dists < distance_cutoff)[0])
     close_iis = np.unique(np.concatenate(close_iis))
-    return len(close_iis)
+    if residue_specific:
+        # the pocket residues
+        my_pocket_residue_list = np.array(list(atom.residue for atom in pdb_pockets.topology.atoms))
+        # print better residue specific array to file that includes 1) len(close_iis) 2) the file name
+        # 3) Array of atoms aka vertices and 4) Array of residues aka pockets 
+        return len(close_iis), list([len(close_iis), pocket_filename, close_iis, my_pocket_residue_list[close_iis]])
+    else:
+        return len(close_iis)
     
 
 class PocketWrap(base_analysis):
@@ -216,15 +242,22 @@ class PocketWrap(base_analysis):
             min_rank=4, min_cluster_size=0, n_cpus=1, build_full=True,
             atom_indices=None, **kwargs):
         self.pocket_reporter = pocket_reporter
+        if isinstance(self.pocket_reporter, ResiduePockets):
+            print("Thank god residues_of_interest!!")
+            self.residues_of_interest = self.pocket_reporter.residues
+            self.atoms_of_interest = self.pocket_reporter.atoms
+            self.mode = self.pocket_reporter.mode
         if self.pocket_reporter is None:
             self.pocket_reporter = TopPockets(n_cpus=n_cpus)
         self.grid_spacing = grid_spacing
         self.probe_radius = probe_radius
         self.min_rank = min_rank
         self.min_cluster_size = min_cluster_size
-        self.n_cpus = n_cpus
+        # self.n_cpus = n_cpus
+        self.n_cpus = 40
         self.build_full = build_full
         self.atom_indices = atom_indices
+        ## needs to run base class 
         if isinstance(self.atom_indices, (str)):
             try:
                 self.atom_indices = np.loadtxt(self.atom_indices, dtype=int)
@@ -253,9 +286,14 @@ class PocketWrap(base_analysis):
             'atom_indices': self.atom_indices
         }   
 
+    # I think this was meant to be called def `output_folder` which is why :func:`~core._move_cluster_data` `hasattr(analysis_obj, "output_folder")` isn't True and this folder is only one that doesn't get move to old directory
     @property
     def analysis_folder(self):
         return "pocket_analysis"
+    
+    # @property
+    # def output_folder(self):
+    #     return "pocket_analysis"
 
     @property
     def base_output_name(self):
@@ -272,9 +310,11 @@ class PocketWrap(base_analysis):
             centers = md.load(
                 self.msm_dir + "/data/full_centers.xtc",
                 top=self.msm_dir + "/prot_masses.pdb")
+            # I think this needs to be `self.pocket_reporter.indices` if self.atom_indices is None first and then check if `self.pocket_reporter.indices` is not None
             if self.atom_indices is not None:
                 centers = centers.atom_slice(self.atom_indices)
             # optionally determine pockets of all structures
+            print("#### self.build_full", self.build_full)
             if self.build_full:
                 cmd = ['mkdir ' + self.output_folder]
                 _ = tools.run_commands(cmd)
@@ -290,7 +330,18 @@ class PocketWrap(base_analysis):
                     pdb_filenames[n_processed_states:], self.output_folder,
                     self.n_cpus)
             # parses log files for pockets and save them
-            pockets = self.pocket_reporter.parse_pockets(self.output_folder)
+            print("&&&&&&&&&&&&&&&& Going to run pocket reporter...", self.pocket_reporter, "which is a:", type(self.pocket_reporter))
+            if isinstance(self.pocket_reporter, ResiduePockets):
+                print("Thank god!!")
+                np.set_printoptions(linewidth=np.inf)
+                pockets, better_pockets = self.pocket_reporter.parse_pockets(self.output_folder)
+                df = pd.DataFrame(better_pockets, index=None, columns=None)
+                df.to_csv(self.output_name.replace('.npy', '.better.PANDAS.tsv'), sep='\t', header=False, index=False)
+                np.savetxt(self.output_name.replace('.npy', '.better.tsv'), better_pockets, delimiter='\t', fmt='%s')
+                # reset
+                np.set_printoptions()
+            else:
+                pockets = self.pocket_reporter.parse_pockets(self.output_folder)
             np.save(self.output_name, pockets)
         
 

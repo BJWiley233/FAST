@@ -12,6 +12,8 @@
 
 import numpy as np
 from ..base import base
+import time
+import os
 
 
 #######################################################################
@@ -36,6 +38,10 @@ class base_analysis(base):
 
     @property
     def state_rankings(self):
+        # freaking slow compute1
+        if not os.path.exists(self.output_name):
+            print("SLEEP 15s")
+            time.sleep(15)
         return np.load(self.output_name)
 
     def set_output(self, msm_dir, gen_num):

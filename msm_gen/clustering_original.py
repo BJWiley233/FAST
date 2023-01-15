@@ -32,7 +32,6 @@ from multiprocessing import Pool
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 #######################################################################
 # code
 #######################################################################
@@ -43,7 +42,7 @@ def load_trjs(trj_filenames, n_procs=1, **kwargs):
     # get filenames
     trj_filenames_test = np.array(
         [
-            os.path.abspath(f) 
+            os.path.abspath(f)
             for f in np.sort(np.array(glob.glob("trajectories/*.xtc")))])
     t0 = time.time()
     diffs = np.setdiff1d(trj_filenames, trj_filenames_test)
@@ -56,7 +55,7 @@ def load_trjs(trj_filenames, n_procs=1, **kwargs):
         _ = tools.run_commands('ls trajectories/*.xtc')
         trj_filenames_test = np.array(
             [
-                os.path.abspath(f) 
+                os.path.abspath(f)
                 for f in np.sort(np.array(glob.glob("trajectories/*.xtc")))])
         diffs = np.setdiff1d(trj_filenames, trj_filenames_test)
     # parallelize load with **kwargs
@@ -128,17 +127,9 @@ class ClusterWrap(base):
     def check_clustering(self, msm_dir, gen_num, n_kids, verbose=True):
         correct_clustering = True
         total_assignments = (gen_num + 1) * n_kids
-        print(total_assignments, gen_num)
-        # where are you?
-        if os.path.exists(msm_dir+"/data/assignments.h5"):
-            print("I AM HERE!!! LINUX!!!!!  %s" % (msm_dir+"/data/assignments.h5"))
-        else:
-            print("LINUX stinks; can't find %s.  SLEEPING 25s" % (msm_dir+"/data/assignments.h5"))
-            time.sleep(55)
         assignments = ra.load(msm_dir + '/data/assignments.h5')
-        n_assignments = len(assignments) 
+        n_assignments = len(assignments)
         if total_assignments != n_assignments:
-            print("total_assignments, n_assignments", total_assignments, n_assignments)
             correct_clustering = False
             logging.info(
                 "inconsistent number of trajectories between assignments and data!")
@@ -195,14 +186,8 @@ class ClusterWrap(base):
         center_indices, distances, assignments, centers = \
             self.base_clust_obj.result_.partition(trj_lengths)
         # save data
-        print("assignments type", type(assignments))
-        print("assignments shape", assignments.shape)
-        print(assignments)
-        print("PATH:", os.getcwd())
         ra.save("./data/assignments.h5", assignments)
-        print("saved ./data/assignments.h5")
         ra.save("./data/distances.h5", distances)
-        print("saved ./data/assignments.h5")
         trjs_sub = trjs_sub[self.base_clust_obj.center_indices_]
         trjs_sub.superpose(trjs_sub[0])
         trjs_sub.save_xtc(

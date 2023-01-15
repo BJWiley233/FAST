@@ -14,6 +14,9 @@ import numpy as np
 import subprocess as sp
 import sys
 from multiprocessing import Pool
+import datetime
+import time
+import os
 
 #######################################################################
 # code
@@ -27,6 +30,11 @@ def convert_to_string(binary):
 def _run_command(cmd_info):
     """Helper function for submitting commands parallelized."""
     cmd, supress = cmd_info
+    if cmd != 'bjobs':
+        if cmd == 'bsub < lsf_submission':
+            print("INFO %s" % (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),"\tSLEEPING 45s:","'"+cmd+"'","\tpath:",os.getcwd())
+            time.sleep(120)
+        print("INFO %s" % (datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")),"\tRunning:","'"+cmd+"'","\tpath:",os.getcwd())
     p = sp.Popen(cmd, shell=True, stdout=sp.PIPE, stderr=sp.PIPE)
     output, err = p.communicate()
     if convert_to_string(err) != '' and not supress:

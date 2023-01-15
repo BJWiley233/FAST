@@ -19,8 +19,6 @@ from enspara.util import array as ra
 from enspara.util.load import load_as_concatenated
 from multiprocessing import Pool
 from ..base import base
-import os
-import time
 
 
 #######################################################################
@@ -37,20 +35,12 @@ def chunks(lst, n):
 def _save_states(centers_info):
     """Save centers found within a single trajectory"""
     # get state, conf, and frame info. Also the filename and topology.
-    # print("centers_info", centers_info)
     states = centers_info['state']
-    print("states", states)
     confs = centers_info['conf']
-    print("confs", confs)
     frames = centers_info['frame']
-    print("frames", frames)
     trj_filename = centers_info['trj_filename'][0]
-    print("\n ####### STARTING FOR", trj_filename,"\n\n")
-    print("trj_filename", trj_filename)
     save_routine = centers_info['save_routine'][0]
-    print("save_routine", save_routine)
     msm_dir = centers_info['msm_dir'][0]
-    print("msm_dir", msm_dir)
     if save_routine == 'full':
         save_masses = True
         save_restarts = True
@@ -64,33 +54,24 @@ def _save_states(centers_info):
         raise
     # load structs trajectories
     if save_masses:
-        print("Loading pdb", trj_filename)
         top = md.load(msm_dir+"/prot_masses.pdb")
-        print("Loading traj", trj_filename)
         trj = md.load(
             msm_dir + '/trajectories/' + trj_filename,
             top=top)
-        print("traj loaded", trj_filename)    
     if save_restarts:
-        print("save_restarts", trj_filename)
         trj_full = md.load(
             msm_dir + '/trajectories_full/' + trj_filename,
             top=msm_dir + "/restart.gro")
-    print("len(states) for", trj_filename, len(states))
     for num in range(len(states)):
-        print("num", num, trj_filename)
         if save_masses:
             # save center after processing
             pdb_filename = msm_dir + \
                 "/centers_masses/state%06d-%02d.pdb" % \
                 (states[num], confs[num])
             center = trj[frames[num]]
-            print("num, superposing", num, trj_filename)
             center.superpose(top)
-            print("num, superposed", num, trj_filename)
             center.save_pdb(pdb_filename)
         if save_restarts:
-            print("save_restarts for num", num)
             # save center for restarting simulations
             pdb_filename = msm_dir + \
                 "/centers_restarts/state%06d-%02d.gro" % \
@@ -101,7 +82,6 @@ def _save_states(centers_info):
         del trj
     if save_restarts:
         del trj_full
-    print("\n ####### FINISHED FOR", trj_filename,"\n\n")
     return
 
 
@@ -198,22 +178,16 @@ def save_states(
     for trj in unique_trjs:
         partitioned_centers_info.append(
             centers_location[np.where(centers_location['trj_num'] == trj)])
-    np.save(msm_dir+"/data/partitioned_centers_info.npy", np.array(partitioned_centers_info)) ## this will have the 1) state ids, 2) Frame numbers and 3) unique_trj name
     if n_procs == 1:
         for pci in partitioned_centers_info:
             _save_states(pci)
     else:
         with Pool(processes=n_procs) as pool:
-            print("POOLING")
-            print("_save_states", _save_states)
-            print("partitioned_centers_info", partitioned_centers_info[0])
-            print(type(partitioned_centers_info))
-            print(len(partitioned_centers_info), len(partitioned_centers_info[0]))
             pool.map(_save_states, partitioned_centers_info)
 #        pool = Pool(processes=n_procs)
 #        pool.map(_save_states, partitioned_centers_info)
 #        pool.terminate()
-    return partitioned_centers_info
+    return
 
 
 class SaveWrap(base):
@@ -253,7 +227,6 @@ class SaveWrap(base):
         self.largest_center = largest_center
         self.save_xtc_centers = save_xtc_centers
         self.n_procs = n_procs
-        print("Initialized")
 
     @property
     def class_name(self):
@@ -271,14 +244,8 @@ class SaveWrap(base):
             }
 
     def check_save_states(self, msm_dir):
-        if os.path.exists(msm_dir+"/data/assignments.h5"):
-            print("I AM HERE!!! LINUX GOOD!!!!!  %s" % (msm_dir+"/data/assignments.h5"))
-        else:
-            print("LINUX BAD; BAD LINUX! can't find %s.  SLEEPING 90s" % (msm_dir+"/data/assignments.h5"))
-            time.sleep(90)
         assigns = ra.load(msm_dir + '/data/assignments.h5')
-        print("assigns", assigns)
-        unique_states = np.unique(assigns.flatten())
+        unique_states = np.unique(assigns)
         n_states = unique_states.shape[0]
         correct_save = True
         save_masses = False
@@ -301,7 +268,6 @@ class SaveWrap(base):
         return correct_save
 
     def run(self, msm_dir='.'):
-        print("Running...")
         if self.centers != 'none':
             assignments = ra.load(msm_dir + "/data/assignments.h5")
             distances = ra.load(msm_dir + "/data/distances.h5")
@@ -314,7 +280,6 @@ class SaveWrap(base):
                     msm_dir + "/rankings/states_to_simulate_gen" + \
                     str(self.gen_num) + ".npy"
                 state_nums = np.load(states_to_simulate_file)
-            print("save_states...")
             save_states(
                 assignments, distances, state_nums=state_nums,
                 n_procs=self.n_procs, largest_center=self.largest_center,
